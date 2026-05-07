@@ -1,0 +1,1 @@
+Simulation code for the paper "Performance Analysis and Optimization Design of Uplink RSMA-Enabled Cell-Free Massive MIMO Systems With Hardware Impairments". Includes implementations of PPO-based reinforcement learning and FP-based optimization methods.
