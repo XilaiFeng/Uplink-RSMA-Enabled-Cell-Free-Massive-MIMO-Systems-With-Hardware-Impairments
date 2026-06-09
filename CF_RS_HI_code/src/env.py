@@ -328,81 +328,168 @@ class CF_RS_HI:
 
         return H, R_new, pilotIndex
 
-    def Caculate_rate(self, order, p):
-
-        H_c = np.zeros((self.L, self.L, self.K, self.K, self.J), dtype=np.complex128)
+  def Caculate_rate(self, order, p):
+    
         term_1 = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
         term_2 = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
         term_3 = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
         term_4 = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
         term_5 = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
-        SINR = np.ones((self.K, self.J), dtype=np.complex128)
-        # order = np.ones((K, J))
+
         denominator = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
+        SINR = np.zeros((self.K, self.J), dtype=np.complex128)
 
-        # path = r'E:\HI_DRL2\src'
+        # path = r'D:\CF_RS_HI_code\src'
 
-        A_data = scio.loadmat(os.path.join(path, 'data/A' + '_L_' + str(self.L) + '_setup_'  + '.mat'))
+        A_data = scio.loadmat(
+            os.path.join(
+                path,
+                'data/A' + '_L_' + str(self.L) + '_setup_' + '.mat'
+            )
+        )
 
-        Y_data = scio.loadmat(os.path.join(path, 'data/Y' + '_L_' + str(self.L) + '_setup_' + '.mat'))
+        Y_data = scio.loadmat(
+            os.path.join(
+                path,
+                'data/Y' + '_L_' + str(self.L) + '_setup_' + '.mat'
+            )
+        )
 
-        bk_data = scio.loadmat(os.path.join(path, 'data/b_k' + '_L_' + str(self.L) + '_setup_'  + '.mat'))
+        bk_data = scio.loadmat(
+            os.path.join(
+                path,
+                'data/b_k' + '_L_' + str(self.L) + '_setup_' + '.mat'
+            )
+        )
 
-        c_data = scio.loadmat(os.path.join(path, 'data/c' + '_L_' + str(self.L) + '_setup_'  + '.mat'))
+        c_data = scio.loadmat(
+            os.path.join(
+                path,
+                'data/c' + '_L_' + str(self.L) + '_setup_' + '.mat'
+            )
+        )
 
         A = A_data['A']
-        Y= Y_data['Y']
-        b_k= bk_data['b_k']
+        Y = Y_data['Y']
+        b_k = bk_data['b_k']
         c = c_data['c']
 
-        for k in range(self.K):
-            for s in range(self.J):
-                current_order = order[k, s]
-                mask = (order >= current_order).reshape(1, 1, self.K, self.J)
-                p_test = p.reshape(1, 1, self.K, self.J)
-                term_1[:, :, k, s] = np.sum(p_test * Y[:, :, k, :, :] * mask, axis=(2, 3))
+        B_b = np.zeros(
+            (self.L, self.L, self.K, self.J),
+            dtype=np.complex128
+        )
 
-        c_3d = c.reshape(self.L, 1, -1, 1)
-        H_c = c_3d * np.conj(c_3d.transpose(1, 0, 2, 3))
-        H_c = H_c.reshape(self.L, self.L, self.K, self.K, self.J)
-
-        precomp = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
-        for k in range(self.K):
-            for s in range(self.J):
-                precomp[:, :, k, s] = np.outer(b_k[k, :, s], b_k[k, :, s].conj())
-
-        # Term 2 计算
-        term_2t = np.zeros((self.L, self.L, self.K, self.J), dtype=np.complex128)
-        for k in range(self.K):
-            current_order = order[k, :]
-            for s in range(self.J):
-                mask = (current_order >= current_order[s]) & (np.arange(self.J) != s)
-                term_2[:, :, k, s] = self.kappa * np.sum(p_test[:, :, k, mask] * precomp[:, :, k, mask], axis=2)
-
-
-        for k in range(self.K):
-            for s in range(self.J):
-                mask = (order > order[k, s]).reshape(1, 1, self.K, self.J)
-                term_3[:, :, k, s] = np.sum(p_test * H_c[:, :, k, :, :] * mask, axis=(2, 3))
+        C_c = np.zeros(
+            (self.L, self.L, self.K, self.K, self.J),
+            dtype=np.complex128
+        )
 
         for k in range(self.K):
             for j in range(self.J):
-                term_5[:, :, k, j] = A[:, :, k, j]
+                b_col = b_k[k, :, j].reshape(self.L, 1)
+                B_b[:, :, k, j] = b_col @ b_col.conj().T
 
         for k in range(self.K):
-            current_order = order[k, :]
+            for i in range(self.K):
+                for j in range(self.J):
+                    c_col = c[:, k, i, j].reshape(self.L, 1)
+                    C_c[:, :, k, i, j] = c_col @ c_col.conj().T
+
+        # =========================================================
+        # term_1:
+        # kappa * sum_{order(i,j)>=order(k,s)} p(i,j)*Y(:,:,k,i,j)
+        # =========================================================
+        for k in range(self.K):
             for s in range(self.J):
-                mask = current_order >= current_order[s]
-                term_4[:, :, k, s] = (1 - self.kappa) * np.sum(p_test[:, :, k, mask] * precomp[:, :, k, mask], axis=2)
+                for i in range(self.K):
+                    for j in range(self.J):
+                        if order[i, j] >= order[k, s]:
+                            term_1[:, :, k, s] += (
+                                self.kappa
+                                * p[i, j]
+                                * Y[:, :, k, i, j]
+                            )
+
+        # =========================================================
+        # term_2:
+        # kappa * sum_{order(k,j)>order(k,s)} p(k,j)*b_kj*b_kj^H
+        # =========================================================
+        for k in range(self.K):
+            for s in range(self.J):
+                for j in range(self.J):
+                    if order[k, j] > order[k, s]:
+                        term_2[:, :, k, s] += (
+                            self.kappa
+                            * p[k, j]
+                            * B_b[:, :, k, j]
+                        )
+
+        # =========================================================
+        # term_3:
+        # kappa * sum_{order(i,j)>order(k,s)}
+        # p(i,j)*c(:,k,i,j)*c(:,k,i,j)^H
+        # =========================================================
+        for k in range(self.K):
+            for s in range(self.J):
+                for i in range(self.K):
+                    for j in range(self.J):
+                        if order[i, j] > order[k, s]:
+                            term_3[:, :, k, s] += (
+                                self.kappa
+                                * p[i, j]
+                                * C_c[:, :, k, i, j]
+                            )
+
+        # =========================================================
+        # term_4:
+        # (1-kappa) * sum_all p(i,j)*(Y(:,:,k,i,j) + c*c^H)
+        #
+        # =========================================================
+        for k in range(self.K):
+            for s in range(self.J):
+                for i in range(self.K):
+                    for j in range(self.J):
+                        term_4[:, :, k, s] += (
+                            (1 - self.kappa)
+                            * p[i, j]
+                            * (
+                                Y[:, :, k, i, j]
+                                + C_c[:, :, k, i, j]
+                            )
+                        )
+
+        # =========================================================
+        # term_5:
+        # A(:,:,k,s)
+        # =========================================================
+        for k in range(self.K):
+            for s in range(self.J):
+                term_5[:, :, k, s] = A[:, :, k, s]
+
 
         for k in range(self.K):
-            for j in range(self.J):
-                denominator[:, :, k, j] = term_1[:, :, k, j] + term_2[:, :, k, j] + term_3[:, :, k, j] + term_4[:, :, k,
-                                                                                                         j] + term_5[:,
-                                                                                                              :, k, j]
-                SINR[k, j] = self.kappa * p[k, j] * b_k[k, :, j] @ np.linalg.inv(denominator[:, :, k, j]) @ (b_k[k, :, j].conj().T)
+            for s in range(self.J):
 
-        # SE = np.sum(np.real(np.log2(1 + SINR)), axis=1)
+                denominator[:, :, k, s] = (
+                    term_1[:, :, k, s]
+                    + term_2[:, :, k, s]
+                    + term_3[:, :, k, s]
+                    + term_4[:, :, k, s]
+                    + term_5[:, :, k, s]
+                )
+
+                b_vec = b_k[k, :, s].reshape(self.L, 1)
+
+                x = np.linalg.solve(
+                    denominator[:, :, k, s],
+                    b_vec
+                )
+
+                SINR[k, s] = (
+                    self.kappa
+                    * p[k, s]
+                    * (b_vec.conj().T @ x)
+                ).squeeze()
 
         return SINR
 
@@ -433,14 +520,7 @@ class CF_RS_HI:
         return next_state
 
     def Step(self, order, p):
-        """
-        获取下一状态和奖励
-        Args:
-            w: 功率。1 x M+1。[0, Pmax/M]
-            phi: RIS 相移因子。1 x N。[0, 2pi]
-            alpha: 分配系数。1 x M。[0, 1]
-        Returns:
-        """
+       
         SINR = self.Caculate_rate(order, p)
 
         # 功率
